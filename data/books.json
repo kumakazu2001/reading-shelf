@@ -31,6 +31,20 @@
    "memo": null
   },
   {
+   "id": "be9e8ce19ec",
+   "title": "夏帆",
+   "author": "村上春樹",
+   "category": "小説",
+   "date": "2026-10-15",
+   "chars": 0,
+   "isbn": null,
+   "cover": null,
+   "memo_level": "none",
+   "excerpt": [],
+   "has_memo": false,
+   "memo": null
+  },
+  {
    "id": "9784797356106",
    "title": "TQ 心の安らぎを得る究極のタイムマネジメント",
    "author": "Smith",
@@ -143,6 +157,34 @@
    "memo": null
   },
   {
+   "id": "b9e7cfa5a7b",
+   "title": "十戒",
+   "author": "夕木春央",
+   "category": "小説",
+   "date": "2026-09-15",
+   "chars": 0,
+   "isbn": null,
+   "cover": null,
+   "memo_level": "none",
+   "excerpt": [],
+   "has_memo": false,
+   "memo": null
+  },
+  {
+   "id": "b47b2490ece",
+   "title": "成瀬は天下を取りにいく",
+   "author": "宮島未奈",
+   "category": "小説",
+   "date": "2026-09-15",
+   "chars": 0,
+   "isbn": null,
+   "cover": null,
+   "memo_level": "none",
+   "excerpt": [],
+   "has_memo": false,
+   "memo": null
+  },
+  {
    "id": "bd60655c77f",
    "title": "世界のクリエイティブを読み解く",
    "author": "",
@@ -196,6 +238,20 @@
    "memo_level": "private",
    "excerpt": [],
    "has_memo": true,
+   "memo": null
+  },
+  {
+   "id": "bbd916a874b",
+   "title": "ファイアードーム 下",
+   "author": "辻村深月",
+   "category": "小説",
+   "date": "2026-08-15",
+   "chars": 0,
+   "isbn": null,
+   "cover": null,
+   "memo_level": "none",
+   "excerpt": [],
+   "has_memo": false,
    "memo": null
   },
   {
@@ -308,6 +364,20 @@
    "memo_level": "private",
    "excerpt": [],
    "has_memo": false,
+   "memo": null
+  },
+  {
+   "id": "9784296121045",
+   "title": "イン・ザ・メガチャーチ",
+   "author": "朝井リョウ",
+   "category": "小説",
+   "date": "2026-05-15",
+   "chars": 1783,
+   "isbn": "9784296121045",
+   "cover": "covers/9784296121045.jpg",
+   "memo_level": "private",
+   "excerpt": [],
+   "has_memo": true,
    "memo": null
   },
   {
@@ -613,20 +683,6 @@
    "chars": 171,
    "isbn": "9784478106471",
    "cover": "covers/9784478106471.jpg",
-   "memo_level": "private",
-   "excerpt": [],
-   "has_memo": true,
-   "memo": null
-  },
-  {
-   "id": "9784296121045",
-   "title": "イン・ザ・メガチャーチ",
-   "author": "朝井リョウ",
-   "category": "小説",
-   "date": "2026-02-13",
-   "chars": 1783,
-   "isbn": "9784296121045",
-   "cover": "covers/9784296121045.jpg",
    "memo_level": "private",
    "excerpt": [],
    "has_memo": true,
