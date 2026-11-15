@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>読書の棚</title>
+<meta name="description" content="読んだ本と、そのときのメモ。">
+<meta property="og:title" content="読書の棚">
+<meta property="og:description" content="読んだ本と、そのときのメモ。">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+  /* 設計メモ
+     - 旧版の「余白に書き込んだインクの色」(ラベンダーグレー × 深い藍) を引き継ぐ
+     - 主役は本人のメモの原文。AIの要約は載せない。抜粋もノートの行そのまま
+     - 本棚で一覧 → 開くとメモ全文。メモが薄い本は「追記待ち」として見えるようにする
+     - データは data/books.json を読むだけ。公開範囲は build.py 側で決める
+     - 鍵付きメモは data/memos.enc.json (AES-GCM)。鍵を入れたブラウザでだけ復号して表示する */
+  :root {
+    --bg: #f0eff6; --fg: #16151f; --surface: #fefeff; --surface2: #e8e7f0;
+    --border: #d8d6e4; --sub: #676480; --accent: #3b3267; --accent-soft: #e4e2f2;
+    --line: #c0bdd4; --shadow: 0 1px 2px rgba(22,21,31,.10), 0 6px 16px -6px rgba(22,21,31,.18);
+    --serif: 'Spectral', 'Hiragino Mincho ProN', 'Yu Mincho', 'YuMincho', serif;
+    --sans: -apple-system, 'Hiragino Kaku Gothic ProN', 'Yu Gothic Medium', 'Meiryo', sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111019; --fg: #e6e3f2; --surface: #191820; --surface2: #211f2e;
+      --border: #2c293e; --sub: #9890b0; --accent: #9b96dc; --accent-soft: #1d1b30;
+      --line: #3a3660; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 18px -8px rgba(0,0,0,.6);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111019; --fg: #e6e3f2; --surface: #191820; --surface2: #211f2e;
+    --border: #2c293e; --sub: #9890b0; --accent: #9b96dc; --accent-soft: #1d1b30;
+    --line: #3a3660; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 18px -8px rgba(0,0,0,.6);
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--sans);
+    font-size: 14px; line-height: 1.75; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1040px; margin-inline: auto; padding: 36px 20px 64px; }
+  @media (max-width: 520px) { .wrap { padding: 24px 16px 48px; } }
+
+  /* Header */
+  .eyebrow { font-size: 11px; letter-spacing: 1.8px; text-transform: uppercase; color: var(--sub); }
+  h1 { font-family: var(--serif); font-size: 28px; font-weight: 600; letter-spacing: -.3px; line-height: 1.3; margin: 6px 0 4px; }
+  .header-rule { width: 32px; height: 2px; background: var(--accent); border-radius: 2px; margin-top: 14px; }
+  .stats { display: flex; gap: 28px; flex-wrap: wrap; margin-top: 22px; }
+  .stat .n { font-family: var(--serif); font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat .l { font-size: 11px; color: var(--sub); }
+
+  /* Month rhythm */
+  .rhythm { margin-top: 28px; }
+  .rhythm-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--sub); margin-bottom: 6px; }
+  .bars { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; align-items: end; height: 64px; }
+  .bar { all: unset; cursor: pointer; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; height: 100%; }
+  .bar i { display: block; background: var(--line); border-radius: 3px 3px 1px 1px; min-height: 2px; transition: background .12s; }
+  .bar:hover i { background: var(--sub); }
+  .bar.on i { background: var(--accent); }
+  .bar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+  .months { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; font-size: 10px; color: var(--sub); text-align: center; margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+  /* Controls */
+  .controls { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 14px 0 12px; margin-top: 24px; border-bottom: 1px solid var(--border); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .search { flex: 1 1 220px; min-width: 0; font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; }
+  .search:focus { outline: none; border-color: var(--accent); }
+  select, .btn { font: inherit; font-size: 12px; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; margin-top: 10px; padding-bottom: 2px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; font: inherit; font-size: 12px; border: 1px solid var(--border); background: transparent; color: var(--sub); border-radius: 20px; padding: 2px 11px; cursor: pointer; white-space: nowrap; }
+  .chip .c { font-variant-numeric: tabular-nums; opacity: .7; margin-left: 4px; }
+  .chip.on { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+  .chip.thin { border-style: dashed; }
+  .result { font-size: 11px; color: var(--sub); margin-top: 16px; }
+
+  /* Shelf */
+  .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 28px 18px; margin-top: 10px; }
+  @media (max-width: 520px) { .shelf { grid-template-columns: repeat(3, 1fr); gap: 20px 12px; } }
+  .book { all: unset; cursor: pointer; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .book:focus-visible .cover { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .cover { position: relative; aspect-ratio: 2 / 3; border-radius: 3px 5px 5px 3px; overflow: hidden; box-shadow: var(--shadow); background: var(--surface2); transition: transform .15s ease; }
+  .book:hover .cover { transform: translateY(-3px); }
+  .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cover::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 6px; background: linear-gradient(90deg, rgba(0,0,0,.18), rgba(255,255,255,.06) 60%, transparent); pointer-events: none; }
+  .plain { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 14px 12px 12px 16px; color: #fff; }
+  .plain .t { font-family: var(--serif); font-size: 13px; font-weight: 600; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .plain .a { font-size: 10px; opacity: .8; }
+  .thin-tag { position: absolute; top: 6px; right: 6px; font-size: 9px; padding: 0 6px; border-radius: 10px; background: var(--surface); color: var(--sub); border: 1px dashed var(--line); }
+  .b-title { font-family: var(--serif); font-size: 13px; font-weight: 600; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .b-meta { font-size: 10.5px; color: var(--sub); display: flex; gap: 6px; align-items: center; font-variant-numeric: tabular-nums; margin-top: -4px; }
+  .depth { flex: 1; height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  .depth i { display: block; height: 100%; background: var(--accent); opacity: .7; }
+  .empty { text-align: center; color: var(--sub); padding: 48px 0; }
+
+  /* Detail */
+  dialog { border: none; padding: 0; background: var(--surface); color: var(--fg); width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); border-radius: 14px; box-shadow: 0 24px 60px -12px rgba(0,0,0,.45); margin: auto; }
+  dialog::backdrop { background: rgba(17,16,25,.5); backdrop-filter: blur(2px); }
+  @media (max-width: 600px) {
+    dialog { width: 100vw; max-width: 100vw; max-height: 92dvh; margin: auto 0 0; border-radius: 16px 16px 0 0; }
+  }
+  .d-inner { display: flex; flex-direction: column; max-height: inherit; }
+  .d-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); gap: 8px; }
+  .d-bar .nav { display: flex; gap: 6px; }
+  .icon-btn { font: inherit; font-size: 13px; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--fg); cursor: pointer; }
+  .icon-btn:disabled { opacity: .3; cursor: default; }
+  .d-body { overflow-y: auto; padding: 24px 28px 32px; }
+  @media (max-width: 600px) { .d-body { padding: 20px 16px 28px; } }
+  .d-head { display: grid; grid-template-columns: 120px 1fr; gap: 22px; align-items: end; }
+  @media (max-width: 600px) { .d-head { grid-template-columns: 88px 1fr; gap: 14px; } }
+  .d-head .cover { box-shadow: var(--shadow); }
+  .d-cat { display: inline-block; font-size: 11px; padding: 1px 9px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+  .d-title { font-family: var(--serif); font-size: 22px; font-weight: 600; line-height: 1.4; text-wrap: balance; }
+  .d-author { font-size: 13px; color: var(--sub); margin-top: 2px; }
+  .d-facts { font-size: 11.5px; color: var(--sub); margin-top: 10px; font-variant-numeric: tabular-nums; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .d-facts a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .d-facts a.permalink { color: var(--sub); }
+  .d-label { font-size: 11px; letter-spacing: 1.4px; color: var(--sub); margin: 28px 0 10px; display: flex; align-items: center; gap: 10px; }
+  .d-label::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .memo { font-size: 14px; line-height: 1.95; }
+  .memo p { margin: 0; }
+  .memo p + p { margin-top: 2px; }
+  .memo .h { font-weight: 600; margin-top: 18px; margin-bottom: 4px; color: var(--accent); font-size: 13px; }
+  .memo .h:first-child { margin-top: 0; }
+  .memo .li { position: relative; padding-left: 14px; }
+  .memo .li::before { content: "–"; position: absolute; left: 0; color: var(--line); }
+  .memo .gap { height: 12px; }
+  .memo .thin-note { margin-top: 18px; font-size: 12px; color: var(--sub); border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; }
+  .lockbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 18px; font-size: 12px; color: var(--sub); }
+  .lockbar .btn { font-size: 12px; }
+  .unlock { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+  .unlock input { flex: 1 1 200px; min-width: 0; font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; }
+  .unlock input:focus { outline: none; border-color: var(--accent); }
+  .unlock .err { width: 100%; font-size: 12px; color: #b4344d; }
+  footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--sub); text-align: center; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Reading Digest</p>
+    <h1>読書の棚</h1>
+    <div class="header-rule"></div>
+    <div class="stats" id="stats"></div>
+    <div class="lockbar" id="lockbar"></div>
+  </header>
+
+  <section class="rhythm" aria-label="月ごとの記録数">
+    <div class="rhythm-head"><span>月ごとの記録</span><span id="monthHint">棒をタップでその月だけ表示</span></div>
+    <div class="bars" id="bars"></div>
+    <div class="months" id="months"></div>
+  </section>
+
+  <div class="controls">
+    <div class="row">
+      <input class="search" id="q" type="search" placeholder="タイトル・著者・メモの中身で探す" autocomplete="off">
+      <select id="sort" aria-label="並び順">
+        <option value="date">記録が新しい順</option>
+        <option value="chars">メモが多い順</option>
+        <option value="title">タイトル順</option>
+      </select>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <p class="result" id="result"></p>
+  <div class="shelf" id="shelf"></div>
+
+  <footer>
+    Obsidian の「本」フォルダから自動生成 ・ 最終更新 <span id="built">—</span><br>
+    表紙は国立国会図書館サーチ / openBD / Apple Books から取得 ・ メモは原文のまま
+  </footer>
+</div>
+
+<dialog id="detail" aria-labelledby="dTitle">
+  <div class="d-inner">
+    <div class="d-bar">
+      <div class="nav">
+        <button class="icon-btn" id="prev" aria-label="前の本">←</button>
+        <button class="icon-btn" id="next" aria-label="次の本">→</button>
+      </div>
+      <button class="icon-btn" id="close" aria-label="閉じる">✕</button>
+    </div>
+    <div class="d-body" id="dBody"></div>
+  </div>
+</dialog>
+
+<script>
+let BOOKS = [];
+let ENC = null, UNLOCKED = false;
+const KEY_STORE = 'reading-shelf-key';
+const store = { get() { try { return localStorage.getItem(KEY_STORE); } catch { return null; } },
+  set(v) { try { localStorage.setItem(KEY_STORE, v); } catch {} }, del() { try { localStorage.removeItem(KEY_STORE); } catch {} } };
+const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function decryptMemos(key) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), 'PBKDF2', false, ['deriveKey']);
+  const aes = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: fromB64(ENC.salt), iterations: ENC.iter, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(ENC.iv) }, aes, fromB64(ENC.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+async function unlock(key, quiet) {
+  try {
+    const memos = await decryptMemos(key.trim());
+    BOOKS.forEach(b => { const m = memos[b.id]; if (m) { b.memo = m.memo; b.excerpt = m.excerpt; } });
+    UNLOCKED = true; store.set(key.trim());
+    renderLockbar(); renderShelf();
+    if ($('#detail').open) openDetail(idx);
+    return true;
+  } catch { store.del(); return false; }
+}
+function lock() { store.del(); location.reload(); }
+function unlockForm(id) {
+  return `<form class="unlock" data-unlock="${id}"><input type="password" autocomplete="current-password" placeholder="鍵を入力" aria-label="メモの鍵"><button class="btn" type="submit">メモを開く</button><span class="err" hidden>鍵が違うようです</span></form>`;
+}
+function bindUnlock(root) {
+  root.querySelectorAll('form[data-unlock]').forEach(f => f.onsubmit = async e => {
+    e.preventDefault();
+    const ok = await unlock(f.querySelector('input').value);
+    if (!ok) f.querySelector('.err').hidden = false;
+  });
+}
+function renderLockbar() {
+  const el = $('#lockbar');
+  if (!ENC) { el.innerHTML = ''; return; }
+  el.innerHTML = UNLOCKED
+    ? `<span>🔓 メモを表示中(このブラウザに鍵を保存しています)</span><button class="btn" id="lockBtn">鍵を外す</button>`
+    : `<span>🔒 メモは鍵付きです</span><button class="btn" id="showUnlock">鍵を入れる</button>`;
+  const lb = $('#lockBtn'); if (lb) lb.onclick = lock;
+  const su = $('#showUnlock'); if (su) su.onclick = () => { el.innerHTML = unlockForm('bar'); bindUnlock(el); el.querySelector('input').focus(); };
+}
+const THIN = 300;
+const CAT_HUE = { '哲学': 252, '心理': 290, '小説': 330, '文章・発信': 32, 'マーケ・広告': 168, '仕事術': 205, 'クリエイティブ': 12, '社会・思想': 222, '写真': 90, 'エッセイ': 48, 'その他': 240 };
+const state = { q: '', cat: null, thin: false, month: null, sort: 'date' };
+let current = [];
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtDate = d => { const [y, m, day] = d.split('-'); return `${y}.${+m}.${+day}`; };
+const ym = d => d.slice(0, 7);
+const coverHTML = (b, big) => {
+  const hue = CAT_HUE[b.category] ?? 240;
+  const plain = `<div class="plain" style="background:linear-gradient(160deg,hsl(${hue} 32% 34%),hsl(${hue} 38% 22%))"><span class="t">${esc(b.title)}</span><span class="a">${esc(b.author)}</span></div>`;
+  const img = b.cover ? `<img src="${esc(b.cover)}" alt="" loading="lazy" onerror="this.replaceWith(document.createRange().createContextualFragment(this.dataset.f))" data-f='${plain.replace(/'/g, '&#39;')}'>` : plain;
+  const tag = !big && b.chars < THIN ? '<span class="thin-tag">追記待ち</span>' : '';
+  return `<div class="cover">${img}${tag}</div>`;
+};
+
+function renderStats() {
+  const thisYear = new Date().getFullYear().toString();
+  const total = BOOKS.reduce((s, b) => s + b.chars, 0);
+  const thin = BOOKS.filter(b => b.chars < THIN).length;
+  const items = [
+    [BOOKS.length, '冊を記録'],
+    [BOOKS.filter(b => b.date.startsWith(thisYear)).length, `${thisYear}年`],
+    [total.toLocaleString(), '字のメモ'],
+    [thin, '冊が追記待ち'],
+  ];
+  $('#stats').innerHTML = items.map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+}
+
+function renderRhythm() {
+  const dates = BOOKS.map(b => b.date).sort();
+  if (!dates.length) return;
+  const months = [];
+  let [y, m] = dates[0].split('-').map(Number);
+  const now = new Date(), endY = now.getFullYear(), endM = now.getMonth() + 1;
+  while (y < endY || (y === endY && m <= endM)) { months.push(`${y}-${String(m).padStart(2, '0')}`); m++; if (m > 12) { m = 1; y++; } }
+  const counts = months.map(k => BOOKS.filter(b => ym(b.date) === k).length);
+  const max = Math.max(1, ...counts);
+  $('#bars').innerHTML = months.map((k, i) => `<button class="bar${state.month === k ? ' on' : ''}" data-m="${k}" aria-label="${k} ${counts[i]}冊" title="${k.replace('-', '年')}月 ${counts[i]}冊"><i style="height:${counts[i] ? Math.max(8, counts[i] / max * 100) : 3}%"></i></button>`).join('');
+  $('#months').innerHTML = months.map(k => { const mm = +k.slice(5); return `<span>${mm === 1 || k === months[0] ? k.slice(2, 4) + '/' : ''}${mm}</span>`; }).join('');
+  $('#bars').querySelectorAll('.bar').forEach(el => el.onclick = () => { state.month = state.month === el.dataset.m ? null : el.dataset.m; update(); });
+}
+
+function renderChips() {
+  const cats = {};
+  BOOKS.forEach(b => cats[b.category] = (cats[b.category] || 0) + 1);
+  const order = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+  const thin = BOOKS.filter(b => b.chars < THIN).length;
+  $('#chips').innerHTML = `<button class="chip${!state.cat && !state.thin ? ' on' : ''}" data-c="">すべて<span class="c">${BOOKS.length}</span></button>` +
+    order.map(([c, n]) => `<button class="chip${state.cat === c ? ' on' : ''}" data-c="${esc(c)}">${esc(c)}<span class="c">${n}</span></button>`).join('') +
+    `<button class="chip thin${state.thin ? ' on' : ''}" data-thin="1">追記待ち<span class="c">${thin}</span></button>`;
+  $('#chips').querySelectorAll('.chip').forEach(el => el.onclick = () => {
+    if (el.dataset.thin) { state.thin = !state.thin; }
+    else { state.cat = el.dataset.c && state.cat !== el.dataset.c ? el.dataset.c : null; if (!el.dataset.c) state.thin = false; }
+    update();
+  });
+}
+
+function filtered() {
+  const q = state.q.trim().toLowerCase();
+  let list = BOOKS.filter(b =>
+    (!state.cat || b.category === state.cat) &&
+    (!state.thin || b.chars < THIN) &&
+    (!state.month || ym(b.date) === state.month) &&
+    (!q || (b.title + ' ' + b.author + ' ' + (b.memo || b.excerpt.join(' '))).toLowerCase().includes(q)));
+  const by = { date: (a, b) => b.date.localeCompare(a.date), chars: (a, b) => b.chars - a.chars, title: (a, b) => a.title.localeCompare(b.title, 'ja') };
+  return list.sort(by[state.sort]);
+}
+
+function renderShelf() {
+  current = filtered();
+  const maxChars = Math.max(...BOOKS.map(b => b.chars));
+  const parts = [];
+  if (state.month) parts.push(state.month.replace('-', '年') + '月');
+  if (state.cat) parts.push(state.cat);
+  if (state.thin) parts.push('追記待ち');
+  if (state.q) parts.push(`「${state.q}」`);
+  $('#result').textContent = `${parts.length ? parts.join(' ・ ') + ' — ' : ''}${current.length}冊`;
+  $('#shelf').innerHTML = current.length ? current.map((b, i) => `
+    <button class="book" data-i="${i}">
+      ${coverHTML(b)}
+      <span class="b-title">${esc(b.title)}</span>
+      <span class="b-meta"><span>${fmtDate(b.date)}</span><span class="depth" title="メモ ${b.chars}字"><i style="width:${Math.max(4, Math.sqrt(b.chars / maxChars) * 100)}%"></i></span></span>
+    </button>`).join('') : '<p class="empty">該当する本はありません</p>';
+  $('#shelf').querySelectorAll('.book').forEach(el => el.onclick = () => openDetail(+el.dataset.i));
+}
+
+function memoHTML(text) {
+  const out = [];
+  let blank = false;
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/\s+$/, '');
+    if (!line.trim() || line.trim() === '---') { if (!blank && out.length) out.push('<div class="gap"></div>'); blank = true; continue; }
+    blank = false;
+    const depth = (raw.match(/^(\t| {2,4})*/)[0].replace(/ {2,4}/g, '\t').length);
+    const pad = depth ? ` style="margin-left:${depth * 16}px"` : '';
+    let m;
+    if ((m = line.match(/^\s*#+\s*(.*)$/))) { if (m[1]) out.push(`<p class="h">${esc(m[1])}</p>`); }
+    else if ((m = line.match(/^\s*(?:[-*・•]|\d+[.、)])\s*(.*)$/))) out.push(`<p class="li"${pad}>${inline(m[1])}</p>`);
+    else out.push(`<p${pad}>${inline(line.trim())}</p>`);
+  }
+  return out.join('');
+}
+const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\[\[(?:[^\]|]*\|)?([^\]]+)\]\]/g, '$1');
+
+function memoSection(b) {
+  if (b.memo_level === 'private' && !b.memo) return b.has_memo
+    ? `<p class="d-label">メモ</p><div class="memo"><p class="thin-note">🔒 メモは鍵付きです。</p>${unlockForm('detail')}</div>`
+    : `<p class="d-label">メモ</p><div class="memo"><p class="thin-note">まだメモがありません。</p></div>`;
+  if (b.memo) return `<p class="d-label">メモ(原文)</p><div class="memo">${memoHTML(b.memo)}${b.chars < THIN ? '<p class="thin-note">まだメモが短い本です。追記されると次の更新で反映されます。</p>' : ''}</div>`;
+  if (b.excerpt && b.excerpt.length) return `<p class="d-label">メモから(抜粋・原文)</p><div class="memo">${b.excerpt.map(l => `<p class="li">${inline(l)}</p>`).join('')}<p class="thin-note">メモ全体 ${b.chars.toLocaleString()}字のうち、冒頭だけを載せています。</p></div>`;
+  return `<p class="d-label">メモ</p><div class="memo"><p class="thin-note">この本のメモは公開していません。</p></div>`;
+}
+
+let idx = 0;
+function openDetail(i) {
+  idx = i;
+  const b = current[i];
+  $('#dBody').innerHTML = `
+    <div class="d-head">
+      ${coverHTML(b, true)}
+      <div>
+        <span class="d-cat">${esc(b.category)}</span>
+        <h2 class="d-title" id="dTitle">${esc(b.title)}</h2>
+        ${b.author ? `<p class="d-author">${esc(b.author)}</p>` : ''}
+        <p class="d-facts"><span>${fmtDate(b.date)} 記録</span><span>メモ ${b.chars.toLocaleString()}字</span>${b.obsidian ? `<a href="${esc(b.obsidian)}">Obsidianで開く ↗</a>` : ''}<a href="#b=${esc(b.id)}" class="permalink">この本へのリンク</a></p>
+      </div>
+    </div>
+    ${memoSection(b)}`;
+  $('#prev').disabled = i === 0;
+  $('#next').disabled = i === current.length - 1;
+  $('#dBody').scrollTop = 0;
+  bindUnlock($('#dBody'));
+  history.replaceState(null, '', '#b=' + encodeURIComponent(b.id));
+  const d = $('#detail');
+  if (!d.open) d.showModal();
+}
+$('#detail').addEventListener('close', () => history.replaceState(null, '', location.pathname + location.search));
+function openFromHash() {
+  const m = location.hash.match(/^#b=(.+)$/);
+  if (!m) return;
+  const id = decodeURIComponent(m[1]);
+  let i = current.findIndex(b => b.id === id);
+  if (i < 0) { Object.assign(state, { q: '', cat: null, thin: false, month: null }); $('#q').value = ''; update(); i = current.findIndex(b => b.id === id); }
+  if (i >= 0) openDetail(i);
+}
+window.addEventListener('hashchange', openFromHash);
+$('#prev').onclick = () => idx > 0 && openDetail(idx - 1);
+$('#next').onclick = () => idx < current.length - 1 && openDetail(idx + 1);
+$('#close').onclick = () => $('#detail').close();
+$('#detail').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+document.addEventListener('keydown', e => {
+  if (!$('#detail').open) return;
+  if (e.key === 'ArrowLeft') $('#prev').click();
+  if (e.key === 'ArrowRight') $('#next').click();
+});
+
+function update() { renderRhythm(); renderChips(); renderShelf(); }
+$('#q').addEventListener('input', e => { state.q = e.target.value; renderShelf(); });
+$('#sort').addEventListener('change', e => { state.sort = e.target.value; renderShelf(); });
+fetch('data/books.json', { cache: 'no-cache' })
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  .then(async data => {
+    BOOKS = data.books;
+    if (BOOKS.some(b => b.memo_level === 'private')) {
+      ENC = await fetch('data/memos.enc.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null);
+    }
+    renderLockbar();
+    const saved = store.get();
+    if (ENC && saved) unlock(saved, true);
+    $('#built').textContent = data.generated_at.slice(0, 10);
+    renderStats();
+    update();
+    openFromHash();
+  })
+  .catch(() => { $('#shelf').innerHTML = '<p class="empty">データを読み込めませんでした</p>'; });
+</script>
+</body>
+</html>
