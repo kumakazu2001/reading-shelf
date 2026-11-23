@@ -1,7 +1,21 @@
 {
  "schema": 2,
- "generated_at": "2026-11-15T21:36:49",
+ "generated_at": "2026-11-23T20:41:32",
  "books": [
+  {
+   "id": "9784478125496",
+   "title": "やっぱり権力",
+   "author": "安藤広大",
+   "category": "社会・思想",
+   "date": "2026-11-23",
+   "chars": 1290,
+   "isbn": "9784478125496",
+   "cover": "covers/9784478125496.jpg",
+   "memo_level": "private",
+   "excerpt": [],
+   "has_memo": true,
+   "memo": null
+  },
   {
    "id": "9784163921143",
    "title": "部下としてのAI 世界一流エンジニアの進化術",
@@ -95,6 +109,20 @@
    "chars": 136,
    "isbn": "9784106111013",
    "cover": "covers/9784106111013.jpg",
+   "memo_level": "private",
+   "excerpt": [],
+   "has_memo": true,
+   "memo": null
+  },
+  {
+   "id": "9784799329139",
+   "title": "スマホ時代の哲学 1",
+   "author": "谷川嘉浩",
+   "category": "哲学",
+   "date": "2026-10-03",
+   "chars": 1476,
+   "isbn": "9784799329139",
+   "cover": "covers/9784799329139.jpg",
    "memo_level": "private",
    "excerpt": [],
    "has_memo": true,
@@ -392,6 +420,20 @@
    "memo_level": "private",
    "excerpt": [],
    "has_memo": false,
+   "memo": null
+  },
+  {
+   "id": "b01b41b2914",
+   "title": "カウセリングとは何か 1",
+   "author": "東山紘久",
+   "category": "心理",
+   "date": "2026-05-06",
+   "chars": 1076,
+   "isbn": null,
+   "cover": null,
+   "memo_level": "private",
+   "excerpt": [],
+   "has_memo": true,
    "memo": null
   },
   {
